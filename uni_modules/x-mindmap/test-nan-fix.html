@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-Mindmap NaN 错误修复测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        #mindmap-container {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            background: white;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        .log {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>X-Mindmap NaN 错误修复测试</h1>
+            <p>测试修复 NaN 坐标错误的功能</p>
+        </div>
+        
+        <div class="test-section">
+            <div class="test-title">SVG 错误修复测试</div>
+            <div id="mindmap-container"></div>
+            <div id="render-status" class="status loading">正在测试 NaN 和 SVGLength 错误修复...</div>
+            <div id="console-log" class="log"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 重写 console.log 以显示在页面上
+        const logElement = document.getElementById('console-log');
+        const originalLog = console.log;
+        const originalError = console.error;
+        
+        function addLog(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logLine = document.createElement('div');
+            logLine.style.color = type === 'error' ? '#dc3545' : '#495057';
+            logLine.textContent = `[${timestamp}] ${message}`;
+            logElement.appendChild(logLine);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addLog(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addLog(args.join(' '), 'error');
+        };
+
+        // 测试 NaN 修复功能
+        async function testNaNFix() {
+            const statusEl = document.getElementById('render-status');
+            const container = document.getElementById('mindmap-container');
+            
+            try {
+                console.log('开始 NaN 修复测试...');
+                
+                // 导入依赖
+                const { Transformer } = await import('./node_modules/markmap-lib/dist/index.js');
+                const { Markmap, loadCSS, loadJS } = await import('./node_modules/markmap-view/dist/index.js');
+                
+                console.log('依赖加载成功');
+                
+                // 测试数据 - 使用可能导致 NaN 的复杂结构
+                const testData = `# NaN 修复测试
+
+## 复杂结构测试
+- 长文本节点测试：这是一个非常长的文本节点，用来测试在复杂布局情况下是否会出现 NaN 坐标问题
+  - 子节点1：包含特殊字符 @#$%^&*()
+  - 子节点2：包含中文字符 测试中文显示
+  - 子节点3：包含数字 123456789
+- 多层嵌套测试
+  - 第二层
+    - 第三层
+      - 第四层
+        - 第五层节点
+- 空节点测试
+  - 
+  - 空内容节点
+
+## 边界情况测试
+- 单字符节点：A
+- 数字节点：1
+- 符号节点：@
+- 长数字：1234567890123456789
+
+## 特殊字符测试
+- Unicode: 🎯🚀✨💡
+- 数学符号: ∑∏∫∆∇
+- 箭头: ←→↑↓⇄⇅`;
+
+                console.log('创建 SVG 容器...');
+
+                // 确保容器有有效尺寸
+                const containerRect = container.getBoundingClientRect();
+                const containerWidth = Math.max(200, containerRect.width || 400);
+                const containerHeight = Math.max(100, containerRect.height || 300);
+
+                console.log(`容器尺寸: ${containerWidth} x ${containerHeight}`);
+
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                // 使用固定像素值避免 SVGLength 错误
+                svg.setAttribute('width', containerWidth.toString());
+                svg.setAttribute('height', containerHeight.toString());
+                svg.style.width = containerWidth + 'px';
+                svg.style.height = containerHeight + 'px';
+                svg.style.display = "block";
+                svg.setAttribute('viewBox', `0 0 ${containerWidth} ${containerHeight}`);
+                svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+                container.appendChild(svg);
+                
+                // 初始化 transformer
+                const transformer = new Transformer();
+                console.log('Transformer 初始化完成');
+                
+                // 转换数据
+                const { root, features } = transformer.transform(testData);
+                console.log('数据转换完成');
+                
+                // 获取资源
+                const assets = transformer.getUsedAssets(features);
+                console.log('资源获取完成');
+                
+                // 加载资源
+                const loadPromises = [];
+                if (assets.styles && assets.styles.length > 0) {
+                    loadPromises.push(loadCSS(assets.styles));
+                }
+                if (assets.scripts && assets.scripts.length > 0) {
+                    loadPromises.push(loadJS(assets.scripts, {
+                        getMarkmap: () => ({ Markmap, loadCSS, loadJS })
+                    }));
+                }
+                
+                if (loadPromises.length > 0) {
+                    await Promise.all(loadPromises);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    console.log('资源加载完成');
+                }
+                
+                // 创建配置选项（包含 NaN 修复逻辑）
+                const options = {
+                    duration: 500,
+                    maxWidth: 300,
+                    initialExpandLevel: -1,
+                    paddingX: Math.max(8, 8),
+                    spacingHorizontal: Math.max(50, 80),
+                    spacingVertical: Math.max(5, 5),
+                    zoom: true,
+                    pan: true,
+                    autoFit: true,
+                    fitRatio: 0.95,
+                    minWidth: 200,
+                    minHeight: 100,
+                    color: (node) => {
+                        const colors = [
+                            '#007aff', '#34c759', '#ff9500', '#ff3b30',
+                            '#af52de', '#5ac8fa', '#ffcc00', '#ff2d92'
+                        ];
+                        const depth = (node && typeof node.depth === 'number') ? node.depth : 0;
+                        return colors[depth % colors.length];
+                    },
+                    lineWidth: (node) => {
+                        const depth = (node && typeof node.depth === 'number') ? node.depth : 0;
+                        return Math.max(1, 4 - depth);
+                    }
+                };
+                
+                console.log('创建 Markmap 实例...');
+                
+                // 创建 markmap 实例
+                const mm = Markmap.create(svg, options, root);
+                
+                console.log('Markmap 实例创建完成');
+                
+                // 等待渲染完成后检查 NaN
+                setTimeout(() => {
+                    console.log('开始检查 NaN 坐标...');
+                    
+                    let hasNaN = false;
+                    let fixedElements = 0;
+                    
+                    // 检查线条
+                    const lines = svg.querySelectorAll('line');
+                    lines.forEach((line, index) => {
+                        const x1 = line.getAttribute('x1');
+                        const y1 = line.getAttribute('y1');
+                        const x2 = line.getAttribute('x2');
+                        const y2 = line.getAttribute('y2');
+                        
+                        if (isNaN(parseFloat(x1)) || isNaN(parseFloat(y1)) || 
+                            isNaN(parseFloat(x2)) || isNaN(parseFloat(y2))) {
+                            console.error(`发现 NaN 坐标 - 线条 ${index}: x1=${x1}, y1=${y1}, x2=${x2}, y2=${y2}`);
+                            hasNaN = true;
+                            
+                            // 修复
+                            line.setAttribute('x1', '0');
+                            line.setAttribute('y1', '0');
+                            line.setAttribute('x2', '0');
+                            line.setAttribute('y2', '0');
+                            line.style.opacity = '0';
+                            fixedElements++;
+                        }
+                    });
+                    
+                    // 检查圆圈
+                    const circles = svg.querySelectorAll('circle');
+                    circles.forEach((circle, index) => {
+                        const cx = circle.getAttribute('cx');
+                        const cy = circle.getAttribute('cy');
+                        
+                        if (isNaN(parseFloat(cx)) || isNaN(parseFloat(cy))) {
+                            console.error(`发现 NaN 坐标 - 圆圈 ${index}: cx=${cx}, cy=${cy}`);
+                            hasNaN = true;
+                            
+                            // 修复
+                            circle.setAttribute('cx', '0');
+                            circle.setAttribute('cy', '0');
+                            circle.style.opacity = '0';
+                            fixedElements++;
+                        }
+                    });
+                    
+                    // 检查文本
+                    const texts = svg.querySelectorAll('text');
+                    texts.forEach((text, index) => {
+                        const x = text.getAttribute('x');
+                        const y = text.getAttribute('y');
+                        
+                        if (isNaN(parseFloat(x)) || isNaN(parseFloat(y))) {
+                            console.error(`发现 NaN 坐标 - 文本 ${index}: x=${x}, y=${y}`);
+                            hasNaN = true;
+                            
+                            // 修复
+                            text.setAttribute('x', '0');
+                            text.setAttribute('y', '0');
+                            text.style.opacity = '0';
+                            fixedElements++;
+                        }
+                    });
+                    
+                    if (hasNaN) {
+                        console.log(`检测到 NaN 坐标，已修复 ${fixedElements} 个元素`);
+                        statusEl.className = 'status error';
+                        statusEl.textContent = `⚠️ 检测到 NaN 坐标错误，已自动修复 ${fixedElements} 个元素`;
+                        
+                        // 重新适配
+                        setTimeout(() => {
+                            mm.fit();
+                            console.log('重新适配完成');
+                        }, 100);
+                    } else {
+                        console.log('未检测到 NaN 坐标，渲染正常');
+                        statusEl.className = 'status success';
+                        statusEl.textContent = '✅ 渲染成功，未发现 NaN 坐标错误';
+                    }
+                    
+                    // 适配容器
+                    mm.fit();
+                    console.log('测试完成');
+                    
+                }, 500);
+                
+            } catch (error) {
+                console.error('测试失败:', error);
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ 测试失败: ${error.message}`;
+                
+                container.innerHTML = `
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        height: 100%;
+                        background: #f8f9fa;
+                        color: #666;
+                        text-align: center;
+                        padding: 20px;
+                    ">
+                        <div>
+                            <div style="font-size: 16px; margin-bottom: 8px;">⚠️ 测试失败</div>
+                            <div style="font-size: 12px;">${error.message}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // 开始测试
+        testNaNFix();
+    </script>
+</body>
+</html>

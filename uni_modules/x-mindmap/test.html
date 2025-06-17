@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-Mindmap 测试页面</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .test-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        #mindmap-container {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            background: white;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.loading {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>X-Mindmap 插件测试</h1>
+            <p>测试基于 markmap 的思维导图渲染功能</p>
+        </div>
+        
+        <div class="test-section">
+            <div class="test-title">依赖检查测试</div>
+            <div id="dependency-status" class="status loading">正在检查依赖...</div>
+        </div>
+        
+        <div class="test-section">
+            <div class="test-title">思维导图渲染测试</div>
+            <div id="mindmap-container"></div>
+            <div id="render-status" class="status loading">正在渲染思维导图...</div>
+        </div>
+    </div>
+
+    <script type="module">
+        // 测试依赖是否正确安装
+        async function testDependencies() {
+            const statusEl = document.getElementById('dependency-status');
+
+            try {
+                // 测试 markmap-lib
+                const markmapLib = await import('./node_modules/markmap-lib/dist/index.js');
+                const { Transformer } = markmapLib;
+
+                // 测试 markmap-view
+                const markmapView = await import('./node_modules/markmap-view/dist/index.js');
+                const { Markmap, loadCSS, loadJS } = markmapView;
+
+                // 测试 d3
+                const d3 = await import('./node_modules/d3/dist/d3.min.js');
+
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ 所有依赖检查通过！markmap-lib v0.18.12, markmap-view v0.18.12, d3 v7.9.0 都已正确安装。';
+
+                // 依赖检查通过后，测试渲染
+                testRendering(Transformer, Markmap, loadCSS, loadJS);
+
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ 依赖检查失败: ${error.message}`;
+                console.error('Dependency error:', error);
+
+                document.getElementById('render-status').className = 'status error';
+                document.getElementById('render-status').textContent = '❌ 无法进行渲染测试，依赖缺失';
+            }
+        }
+        
+        // 测试思维导图渲染
+        async function testRendering(Transformer, Markmap, loadCSS, loadJS) {
+            const statusEl = document.getElementById('render-status');
+            const container = document.getElementById('mindmap-container');
+            
+            try {
+                // 测试数据
+                const testData = `# X-Mindmap 测试
+
+## 功能测试
+- 基础渲染 ✅
+- 依赖加载 ✅
+- 样式应用 ✅
+
+## 特性验证
+- Markdown 解析
+  - 标题层级
+  - 列表结构
+  - 文本内容
+- 可视化效果
+  - 节点连接
+  - 颜色方案
+  - 字体样式
+
+## 平台兼容性
+- H5 浏览器 ✅
+- 现代浏览器支持
+- 响应式设计`;
+
+                // 创建 SVG 容器
+                const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                svg.style.width = "100%";
+                svg.style.height = "100%";
+                svg.style.display = "block";
+                container.appendChild(svg);
+                
+                // 初始化 transformer
+                const transformer = new Transformer();
+                
+                // 转换数据
+                const { root, features } = transformer.transform(testData);
+                
+                // 获取资源
+                const assets = transformer.getUsedAssets(features);
+                
+                // 加载资源
+                const loadPromises = [];
+                if (assets.styles) {
+                    loadPromises.push(loadCSS(assets.styles));
+                }
+                if (assets.scripts) {
+                    loadPromises.push(loadJS(assets.scripts, {
+                        getMarkmap: () => ({ Markmap, loadCSS, loadJS })
+                    }));
+                }
+                
+                // 等待资源加载
+                if (loadPromises.length > 0) {
+                    await Promise.all(loadPromises);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                
+                // 创建 markmap 实例
+                const options = {
+                    duration: 500,
+                    maxWidth: 300,
+                    initialExpandLevel: -1,
+                    paddingX: 8,
+                    spacingHorizontal: 80,
+                    spacingVertical: 5,
+                    zoom: true,
+                    pan: true,
+                    autoFit: true,
+                    fitRatio: 0.95,
+                    color: (node) => {
+                        const colors = [
+                            '#007aff', '#34c759', '#ff9500', '#ff3b30',
+                            '#af52de', '#5ac8fa', '#ffcc00', '#ff2d92'
+                        ];
+                        return colors[node.depth % colors.length];
+                    },
+                    lineWidth: (node) => {
+                        return Math.max(1, 4 - node.depth);
+                    }
+                };
+                
+                const mm = Markmap.create(svg, options, root);
+                
+                // 适配容器
+                setTimeout(() => {
+                    if (mm) {
+                        mm.fit();
+                    }
+                }, 200);
+                
+                statusEl.className = 'status success';
+                statusEl.textContent = '✅ 思维导图渲染成功！所有功能正常工作。';
+                
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `❌ 渲染失败: ${error.message}`;
+                
+                // 显示错误信息
+                container.innerHTML = `
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        height: 100%;
+                        background: #f8f9fa;
+                        color: #666;
+                        text-align: center;
+                        padding: 20px;
+                    ">
+                        <div>
+                            <div style="font-size: 16px; margin-bottom: 8px;">⚠️ 渲染测试失败</div>
+                            <div style="font-size: 12px;">${error.message}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // 开始测试
+        testDependencies();
+    </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "hash": "8828335f",
+  "configHash": "139a2b1b",
+  "lockfileHash": "e3b0c442",
+  "browserHash": "2401bf4d",
+  "optimized": {
+    "markmap-lib": {
+      "src": "../../../../../uni_modules/x-mindmap/node_modules/markmap-lib/dist/browser/index.mjs",
+      "file": "markmap-lib.js",
+      "fileHash": "81d44b5e",
+      "needsInterop": false
+    },
+    "markmap-view": {
+      "src": "../../../../../uni_modules/x-mindmap/node_modules/markmap-view/dist/index.js",
+      "file": "markmap-view.js",
+      "fileHash": "ad68d906",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-GJ42OUOW": {
+      "file": "chunk-GJ42OUOW.js"
+    }
+  }
+}
