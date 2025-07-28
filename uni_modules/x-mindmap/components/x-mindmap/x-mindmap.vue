@@ -330,14 +330,51 @@
       }
     },
     methods: {
+      // 安全的事件触发方法
+      safeEmit(eventName, ...args) {
+        try {
+          if (this.ownerInstance && typeof this.ownerInstance.$emit === 'function') {
+            this.ownerInstance.$emit(eventName, ...args);
+          } else {
+            console.warn(`Cannot emit event '${eventName}': ownerInstance.$emit is not available`);
+          }
+        } catch (error) {
+          console.error(`Error emitting event '${eventName}':`, error);
+        }
+      },
+
+      // 安全的方法调用
+      safeCall(methodName, ...args) {
+        try {
+          if (this.ownerInstance && typeof this.ownerInstance[methodName] === 'function') {
+            return this.ownerInstance[methodName](...args);
+          } else {
+            console.warn(`Cannot call method '${methodName}': method is not available`);
+          }
+        } catch (error) {
+          console.error(`Error calling method '${methodName}':`, error);
+        }
+      },
+
       init(data, ownerInstance) {
         if (!data || typeof data !== 'string') {
           console.warn('Markmap: Invalid data provided');
           return;
         }
 
-        // 保存组件实例引用
+        // 保存组件实例引用，并进行安全检查
         this.ownerInstance = ownerInstance;
+
+        // 调试信息：检查 ownerInstance 的可用性
+        if (ownerInstance) {
+          console.log('OwnerInstance available:', {
+            hasEmit: typeof ownerInstance.$emit === 'function',
+            hasSelectNode: typeof ownerInstance.selectNode === 'function',
+            hasEditNodeText: typeof ownerInstance.editNodeText === 'function'
+          });
+        } else {
+          console.warn('OwnerInstance is null or undefined');
+        }
 
         // 从 DOM 元素获取配置
         const container = document.querySelector(".markmap-container");
@@ -458,9 +495,16 @@
   
       async renderMarkmap(data) {
         try {
+          // 移动端兼容性检查
+          const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+          if (isMobile) {
+            console.log('检测到移动端环境，启用兼容模式');
+          }
+
           const container = document.querySelector(".markmap-container");
           if (!container) {
             console.error('Markmap container not found');
+            this.safeEmit('error', new Error('容器未找到'));
             return;
           }
   
@@ -590,18 +634,22 @@
           console.log('Markmap rendered successfully');
 
           // 触发ready事件
-          if (this.ownerInstance) {
-            this.ownerInstance.$emit('ready', mm);
-          }
+          this.safeEmit('ready', mm);
 
         } catch (error) {
           console.error('Failed to render markmap:', error);
-          this.showError(error.message);
+
+          // 移动端特殊错误处理
+          let errorMessage = error.message;
+          if (error.message.includes('$emit') || error.message.includes('ownerInstance')) {
+            errorMessage = '移动端兼容性问题：组件通信失败';
+            console.warn('检测到移动端组件通信问题，这可能是正常的');
+          }
+
+          this.showError(errorMessage);
 
           // 触发error事件
-          if (this.ownerInstance) {
-            this.ownerInstance.$emit('error', error);
-          }
+          this.safeEmit('error', error);
         }
       },
 
@@ -1015,9 +1063,7 @@
         this.selectedNode = node;
 
         // 通知主组件
-        if (this.ownerInstance) {
-          this.ownerInstance.selectNode(node);
-        }
+        this.safeCall('selectNode', node);
       },
 
       // 开始编辑节点
@@ -1079,10 +1125,8 @@
         }
 
         // 通知主组件
-        if (this.ownerInstance) {
-          this.ownerInstance.editNodeText(node, newText);
-          this.ownerInstance.$emit('data-change', this.dataToMarkdown(this.currentData));
-        }
+        this.safeCall('editNodeText', node, newText);
+        this.safeEmit('data-change', this.dataToMarkdown(this.currentData));
       },
 
       // 添加节点
@@ -1110,9 +1154,7 @@
         }
 
         // 通知主组件
-        if (this.ownerInstance) {
-          this.ownerInstance.$emit('data-change', this.dataToMarkdown(this.currentData));
-        }
+        this.safeEmit('data-change', this.dataToMarkdown(this.currentData));
       },
 
       // 删除节点
@@ -1146,9 +1188,7 @@
         }
 
         // 通知主组件
-        if (this.ownerInstance) {
-          this.ownerInstance.$emit('data-change', this.dataToMarkdown(this.currentData));
-        }
+        this.safeEmit('data-change', this.dataToMarkdown(this.currentData));
       },
 
       // 将数据转换为 Markdown

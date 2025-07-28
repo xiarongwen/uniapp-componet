@@ -76,6 +76,13 @@
   background: #fff;
   border-color: #ddd;
 }
+.x-mindmap-toolbar .toolbar-btn.active[data-v-c6d39596] {
+  background: #007aff;
+  border-color: #007aff;
+}
+.x-mindmap-toolbar .toolbar-btn.active .btn-icon[data-v-c6d39596] {
+  color: #fff;
+}
 .x-mindmap-toolbar .toolbar-btn .btn-icon[data-v-c6d39596] {
   font-size: 16px;
   font-weight: bold;
@@ -116,6 +123,15 @@
   text-anchor: start;
   dominant-baseline: central;
 }
+.markmap-container[data-v-c6d39596] .markmap-svg .markmap-node.selected > circle {
+  stroke: #007aff;
+  stroke-width: 3px;
+  fill: rgba(0, 122, 255, 0.1);
+}
+.markmap-container[data-v-c6d39596] .markmap-svg .markmap-node.selected > uni-text {
+  fill: #007aff;
+  font-weight: bold;
+}
 .markmap-container[data-v-c6d39596] .markmap-svg path {
   vector-effect: non-scaling-stroke;
 }
@@ -132,6 +148,18 @@
 }
 .markmap-container[data-v-c6d39596]:has(.markmap-svg)::before {
   display: none;
+}
+.markmap-container.edit-mode[data-v-c6d39596] {
+  border-color: #007aff;
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2);
+}
+.markmap-container.edit-mode .markmap-node[data-v-c6d39596] {
+  cursor: pointer;
+}
+.markmap-container.edit-mode .markmap-node:hover > circle[data-v-c6d39596] {
+  stroke: #007aff;
+  stroke-width: 2px;
+  fill: rgba(0, 122, 255, 0.05);
 }
 .theme-dark .x-mindmap-toolbar[data-v-c6d39596] {
   background: #2d3748;

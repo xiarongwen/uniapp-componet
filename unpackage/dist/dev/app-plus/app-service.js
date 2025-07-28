@@ -133,9 +133,35 @@ if (uni.restoreGlobal) {
       customStyle: {
         type: Object,
         default: () => ({})
+      },
+      // 是否可编辑
+      editable: {
+        type: Boolean,
+        default: false
+      },
+      // 编辑模式下的配置
+      editConfig: {
+        type: Object,
+        default: () => ({
+          allowAddNode: true,
+          allowDeleteNode: true,
+          allowEditText: true,
+          allowDragNode: false
+        })
       }
     },
-    emits: ["node-click", "node-expand", "node-collapse", "ready", "error"],
+    emits: [
+      "node-click",
+      "node-expand",
+      "node-collapse",
+      "ready",
+      "error",
+      "node-add",
+      "node-delete",
+      "node-edit",
+      "data-change",
+      "edit-mode-change"
+    ],
     computed: {
       containerStyle() {
         const style = {
@@ -189,7 +215,67 @@ if (uni.restoreGlobal) {
         if (this.$refs.markmap) {
           this.$refs.markmap.exportSVG();
         }
+      },
+      // 编辑功能方法
+      toggleEditMode() {
+        this.editMode = !this.editMode;
+        this.selectedNode = null;
+        this.editingNode = null;
+        this.$emit("edit-mode-change", this.editMode);
+        if (this.$refs.markmap) {
+          this.$refs.markmap.setEditMode(this.editMode);
+        }
+      },
+      addNode() {
+        if (!this.editMode)
+          return;
+        const newNodeText = "新节点";
+        this.$emit("node-add", {
+          parentNode: this.selectedNode,
+          text: newNodeText
+        });
+        if (this.$refs.markmap) {
+          this.$refs.markmap.addNode(this.selectedNode, newNodeText);
+        }
+      },
+      deleteNode() {
+        if (!this.editMode || !this.selectedNode)
+          return;
+        this.$emit("node-delete", this.selectedNode);
+        if (this.$refs.markmap) {
+          this.$refs.markmap.deleteNode(this.selectedNode);
+        }
+        this.selectedNode = null;
+      },
+      editNodeText(node, newText) {
+        if (!this.editMode)
+          return;
+        this.$emit("node-edit", {
+          node,
+          oldText: node.content,
+          newText
+        });
+        if (this.$refs.markmap) {
+          this.$refs.markmap.editNode(node, newText);
+        }
+      },
+      selectNode(node) {
+        this.selectedNode = node;
+        this.$emit("node-click", node);
       }
+    },
+    data() {
+      return {
+        editMode: false,
+        selectedNode: null,
+        editingNode: null,
+        nodeContextMenu: {
+          show: false,
+          x: 0,
+          y: 0,
+          node: null
+        }
+      };
     }
   };
   function _sfc_render$1(_ctx, _cache, $props, $setup, $data, $options) {
@@ -242,10 +328,41 @@ if (uni.restoreGlobal) {
               vue.createElementVNode("text", { class: "btn-icon" }, "⊟")
             ])
           ]),
+          $props.editable ? (vue.openBlock(), vue.createElementBlock("view", {
+            key: 0,
+            class: "toolbar-group"
+          }, [
+            vue.createElementVNode(
+              "button",
+              {
+                class: vue.normalizeClass(["toolbar-btn", { active: $data.editMode }]),
+                onClick: _cache[5] || (_cache[5] = (...args) => $options.toggleEditMode && $options.toggleEditMode(...args))
+              },
+              [
+                vue.createElementVNode("text", { class: "btn-icon" }, "✎")
+              ],
+              2
+              /* CLASS */
+            ),
+            vue.createElementVNode("button", {
+              class: "toolbar-btn",
+              onClick: _cache[6] || (_cache[6] = (...args) => $options.addNode && $options.addNode(...args)),
+              disabled: !$data.editMode
+            }, [
+              vue.createElementVNode("text", { class: "btn-icon" }, "⊕")
+            ], 8, ["disabled"]),
+            vue.createElementVNode("button", {
+              class: "toolbar-btn",
+              onClick: _cache[7] || (_cache[7] = (...args) => $options.deleteNode && $options.deleteNode(...args)),
+              disabled: !$data.editMode || !$data.selectedNode
+            }, [
+              vue.createElementVNode("text", { class: "btn-icon" }, "⊖")
+            ], 8, ["disabled"])
+          ])) : vue.createCommentVNode("v-if", true),
           vue.createElementVNode("view", { class: "toolbar-group" }, [
             vue.createElementVNode("button", {
               class: "toolbar-btn",
-              onClick: _cache[5] || (_cache[5] = (...args) => $options.exportSVG && $options.exportSVG(...args))
+              onClick: _cache[8] || (_cache[8] = (...args) => $options.exportSVG && $options.exportSVG(...args))
             }, [
               vue.createElementVNode("text", { class: "btn-icon" }, "↓")
             ])
@@ -264,13 +381,14 @@ if (uni.restoreGlobal) {
           "initial-expand-level": $props.initialExpandLevel,
           zoomable: $props.zoomable,
           draggable: $props.draggable,
+          editable: $props.editable,
           "change:data": _ctx.markmap.init,
           "change:theme": _ctx.markmap.updateTheme,
           "change:colors": _ctx.markmap.updateColors,
           "change:spacing": _ctx.markmap.updateSpacing,
           "change:font": _ctx.markmap.updateFont,
           style: vue.normalizeStyle($options.mindmapStyle)
-        }, null, 12, ["data", "theme", "colors", "spacing", "font", "duration", "max-width", "initial-expand-level", "zoomable", "draggable", "change:data", "change:theme", "change:colors", "change:spacing", "change:font"])
+        }, null, 12, ["data", "theme", "colors", "spacing", "font", "duration", "max-width", "initial-expand-level", "zoomable", "draggable", "editable", "change:data", "change:theme", "change:colors", "change:spacing", "change:font"])
       ],
       6
       /* CLASS, STYLE */

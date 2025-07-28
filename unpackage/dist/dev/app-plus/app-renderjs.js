@@ -38250,19 +38250,57 @@ ${end2.comment}` : end2.comment;
         currentTheme: "default",
         currentColors: [],
         currentSpacing: {},
-        currentFont: {}
+        currentFont: {},
+        editMode: false,
+        selectedNode: null,
+        currentData: null,
+        isEditable: false
       };
     },
     methods: {
+      // 安全的事件触发方法
+      safeEmit(eventName, ...args) {
+        try {
+          if (this.ownerInstance && typeof this.ownerInstance.$emit === "function") {
+            this.ownerInstance.$emit(eventName, ...args);
+          } else {
+            console.warn(`Cannot emit event '${eventName}': ownerInstance.$emit is not available`);
+          }
+        } catch (error2) {
+          console.error(`Error emitting event '${eventName}':`, error2);
+        }
+      },
+      // 安全的方法调用
+      safeCall(methodName, ...args) {
+        try {
+          if (this.ownerInstance && typeof this.ownerInstance[methodName] === "function") {
+            return this.ownerInstance[methodName](...args);
+          } else {
+            console.warn(`Cannot call method '${methodName}': method is not available`);
+          }
+        } catch (error2) {
+          console.error(`Error calling method '${methodName}':`, error2);
+        }
+      },
       init(data2, ownerInstance) {
         if (!data2 || typeof data2 !== "string") {
           console.warn("Markmap: Invalid data provided");
           return;
         }
         this.ownerInstance = ownerInstance;
+        if (ownerInstance) {
+          console.log("OwnerInstance available:", {
+            hasEmit: typeof ownerInstance.$emit === "function",
+            hasSelectNode: typeof ownerInstance.selectNode === "function",
+            hasEditNodeText: typeof ownerInstance.editNodeText === "function"
+          });
+        } else {
+          console.warn("OwnerInstance is null or undefined");
+        }
         const container = document.querySelector(".markmap-container");
         if (container) {
           this.currentTheme = container.getAttribute("theme") || "default";
+          this.isEditable = container.getAttribute("editable") === "true";
           try {
             const colorsAttr = container.getAttribute("colors");
             this.currentColors = colorsAttr ? JSON.parse(colorsAttr) : [
@@ -38379,20 +38417,32 @@ ${end2.comment}` : end2.comment;
       renderMarkmap(data2) {
         return __async(this, null, function* () {
           try {
+            const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            if (isMobile) {
+              console.log("\u68C0\u6D4B\u5230\u79FB\u52A8\u7AEF\u73AF\u5883\uFF0C\u542F\u7528\u517C\u5BB9\u6A21\u5F0F");
+            }
             const container = document.querySelector(".markmap-container");
             if (!container) {
               console.error("Markmap container not found");
+              this.safeEmit("error", new Error("\u5BB9\u5668\u672A\u627E\u5230"));
               return;
             }
             let existingSvg = container.querySelector(".markmap-svg");
             if (existingSvg) {
               container.removeChild(existingSvg);
             }
+            const containerRect = container.getBoundingClientRect();
+            const containerWidth = Math.max(200, containerRect.width || 400);
+            const containerHeight = Math.max(100, containerRect.height || 300);
             const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
             svg.setAttribute("class", "markmap-svg");
-            svg.style.width = "100%";
-            svg.style.height = "100%";
+            svg.setAttribute("width", containerWidth.toString());
+            svg.setAttribute("height", containerHeight.toString());
+            svg.style.width = containerWidth + "px";
+            svg.style.height = containerHeight + "px";
             svg.style.display = "block";
+            svg.setAttribute("viewBox", `0 0 ${containerWidth} ${containerHeight}`);
+            svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
             container.appendChild(svg);
             if (!transformer) {
               transformer = new Transformer();
@@ -38414,29 +38464,61 @@ ${end2.comment}` : end2.comment;
             }
             const options = this.getMarkmapOptions();
             mm = it.create(svg, options, root3);
+            this.currentData = root3;
             setTimeout(() => {
-              if (mm) {
-                mm.fit();
-              }
-            }, 100);
-            if (window.ResizeObserver) {
-              const resizeObserver = new ResizeObserver(() => {
+              try {
                 if (mm) {
+                  this.fixSVGLengthErrors();
+                  this.validateNodePositions();
                   mm.fit();
+                  if (this.isEditable) {
+                    this.setupEditableFeatures(svg);
+                  }
+                }
+              } catch (error2) {
+                console.error("\u540E\u5904\u7406\u9636\u6BB5\u51FA\u9519:", error2);
+                if (mm) {
+                  try {
+                    mm.fit();
+                  } catch (fitError) {
+                    console.error("\u9002\u914D\u5BB9\u5668\u5931\u8D25:", fitError);
+                  }
+                }
+              }
+            }, 200);
+            if (window.ResizeObserver) {
+              const resizeObserver = new ResizeObserver((entries) => {
+                if (mm && svg) {
+                  for (let entry of entries) {
+                    const { width, height } = entry.contentRect;
+                    const newWidth = Math.max(200, width);
+                    const newHeight = Math.max(100, height);
+                    svg.setAttribute("width", newWidth.toString());
+                    svg.setAttribute("height", newHeight.toString());
+                    svg.style.width = newWidth + "px";
+                    svg.style.height = newHeight + "px";
+                    svg.setAttribute("viewBox", `0 0 ${newWidth} ${newHeight}`);
+                    setTimeout(() => {
+                      if (mm) {
+                        mm.fit();
+                      }
+                    }, 50);
+                  }
                 }
               });
               resizeObserver.observe(container);
             }
             console.log("Markmap rendered successfully");
-            if (this.ownerInstance) {
-              this.ownerInstance.$emit("ready", mm);
-            }
+            this.safeEmit("ready", mm);
           } catch (error2) {
             console.error("Failed to render markmap:", error2);
-            this.showError(error2.message);
-            if (this.ownerInstance) {
-              this.ownerInstance.$emit("error", error2);
+            let errorMessage = error2.message;
+            if (error2.message.includes("$emit") || error2.message.includes("ownerInstance")) {
+              errorMessage = "\u79FB\u52A8\u7AEF\u517C\u5BB9\u6027\u95EE\u9898\uFF1A\u7EC4\u4EF6\u901A\u4FE1\u5931\u8D25";
+              console.warn("\u68C0\u6D4B\u5230\u79FB\u52A8\u7AEF\u7EC4\u4EF6\u901A\u4FE1\u95EE\u9898\uFF0C\u8FD9\u53EF\u80FD\u662F\u6B63\u5E38\u7684");
             }
+            this.showError(errorMessage);
+            this.safeEmit("error", error2);
           }
         });
       },
@@ -38460,20 +38542,24 @@ ${end2.comment}` : end2.comment;
           duration,
           maxWidth,
           initialExpandLevel,
-          paddingX: this.currentSpacing && this.currentSpacing.paddingX || 8,
-          spacingHorizontal: this.currentSpacing && this.currentSpacing.horizontal || 80,
-          spacingVertical: this.currentSpacing && this.currentSpacing.vertical || 5,
+          paddingX: Math.max(8, this.currentSpacing && this.currentSpacing.paddingX || 8),
+          spacingHorizontal: Math.max(50, this.currentSpacing && this.currentSpacing.horizontal || 80),
+          spacingVertical: Math.max(5, this.currentSpacing && this.currentSpacing.vertical || 5),
           zoom: zoomable,
           pan: draggable,
           autoFit: true,
           fitRatio: 0.95,
+          // 确保容器有最小尺寸
+          minWidth: 200,
+          minHeight: 100,
           // 自定义颜色方案
           color: (node) => {
             return this.getNodeColor(node);
           },
           // 自定义线宽
           lineWidth: (node) => {
-            return Math.max(1, 4 - node.depth);
+            const depth = node && typeof node.depth === "number" ? node.depth : 0;
+            return Math.max(1, 4 - depth);
           }
         };
       },
@@ -38608,6 +38694,315 @@ ${end2.comment}` : end2.comment;
           document.body.removeChild(link3);
           URL.revokeObjectURL(url);
         }
+      },
+      // 验证节点位置，修复 NaN 坐标和 SVGLength 错误
+      validateNodePositions() {
+        const svg = document.querySelector(".markmap-container svg");
+        if (!svg)
+          return;
+        console.log("\u5F00\u59CB\u9A8C\u8BC1\u8282\u70B9\u4F4D\u7F6E...");
+        const safeGetAttribute = (element, attr2) => {
+          try {
+            const value = element.getAttribute(attr2);
+            if (value === null || value === void 0 || value === "" || isNaN(parseFloat(value))) {
+              return null;
+            }
+            return parseFloat(value);
+          } catch (error2) {
+            console.warn(`\u83B7\u53D6\u5C5E\u6027 ${attr2} \u5931\u8D25:`, error2);
+            return null;
+          }
+        };
+        const lines = svg.querySelectorAll("line");
+        let fixedLines = 0;
+        lines.forEach((line, index2) => {
+          try {
+            const x1 = safeGetAttribute(line, "x1");
+            const y1 = safeGetAttribute(line, "y1");
+            const x2 = safeGetAttribute(line, "x2");
+            const y2 = safeGetAttribute(line, "y2");
+            if (x1 === null || y1 === null || x2 === null || y2 === null) {
+              console.warn(`\u7EBF\u6761 ${index2} \u5750\u6807\u65E0\u6548: x1=${x1}, y1=${y1}, x2=${x2}, y2=${y2}`);
+              line.setAttribute("x1", "0");
+              line.setAttribute("y1", "0");
+              line.setAttribute("x2", "0");
+              line.setAttribute("y2", "0");
+              line.style.opacity = "0";
+              fixedLines++;
+            }
+          } catch (error2) {
+            console.error(`\u5904\u7406\u7EBF\u6761 ${index2} \u65F6\u51FA\u9519:`, error2);
+            line.style.display = "none";
+            fixedLines++;
+          }
+        });
+        const circles = svg.querySelectorAll("circle");
+        let fixedCircles = 0;
+        circles.forEach((circle, index2) => {
+          try {
+            const cx = safeGetAttribute(circle, "cx");
+            const cy = safeGetAttribute(circle, "cy");
+            const r = safeGetAttribute(circle, "r");
+            if (cx === null || cy === null) {
+              console.warn(`\u5706\u5708 ${index2} \u5750\u6807\u65E0\u6548: cx=${cx}, cy=${cy}`);
+              circle.setAttribute("cx", "0");
+              circle.setAttribute("cy", "0");
+              if (r === null) {
+                circle.setAttribute("r", "3");
+              }
+              circle.style.opacity = "0";
+              fixedCircles++;
+            }
+          } catch (error2) {
+            console.error(`\u5904\u7406\u5706\u5708 ${index2} \u65F6\u51FA\u9519:`, error2);
+            circle.style.display = "none";
+            fixedCircles++;
+          }
+        });
+        const texts = svg.querySelectorAll("text");
+        let fixedTexts = 0;
+        texts.forEach((text3, index2) => {
+          try {
+            const x2 = safeGetAttribute(text3, "x");
+            const y2 = safeGetAttribute(text3, "y");
+            if (x2 === null || y2 === null) {
+              console.warn(`\u6587\u672C ${index2} \u5750\u6807\u65E0\u6548: x=${x2}, y=${y2}`);
+              text3.setAttribute("x", "0");
+              text3.setAttribute("y", "0");
+              text3.style.opacity = "0";
+              fixedTexts++;
+            }
+          } catch (error2) {
+            console.error(`\u5904\u7406\u6587\u672C ${index2} \u65F6\u51FA\u9519:`, error2);
+            text3.style.display = "none";
+            fixedTexts++;
+          }
+        });
+        if (fixedLines > 0 || fixedCircles > 0 || fixedTexts > 0) {
+          console.log(`\u4FEE\u590D\u4E86 ${fixedLines} \u6761\u7EBF, ${fixedCircles} \u4E2A\u5706\u5708, ${fixedTexts} \u4E2A\u6587\u672C\u7684 NaN \u5750\u6807`);
+          setTimeout(() => {
+            if (mm) {
+              console.log("\u91CD\u65B0\u9002\u914D\u5BB9\u5668...");
+              mm.fit();
+            }
+          }, 100);
+        }
+      },
+      // 修复 SVG 相对长度错误
+      fixSVGLengthErrors() {
+        const svg = document.querySelector(".markmap-container svg");
+        if (!svg)
+          return;
+        console.log("\u4FEE\u590D SVG \u957F\u5EA6\u9519\u8BEF...");
+        try {
+          const container = document.querySelector(".markmap-container");
+          if (container) {
+            const rect = container.getBoundingClientRect();
+            const width = Math.max(200, rect.width || 400);
+            const height = Math.max(100, rect.height || 300);
+            svg.setAttribute("width", width.toString());
+            svg.setAttribute("height", height.toString());
+            svg.style.width = width + "px";
+            svg.style.height = height + "px";
+            console.log(`SVG \u5C3A\u5BF8\u8BBE\u7F6E\u4E3A: ${width} x ${height}`);
+          }
+          const allElements = svg.querySelectorAll("*");
+          allElements.forEach((element) => {
+            try {
+              const attributes2 = ["width", "height", "x", "y", "cx", "cy", "r", "x1", "y1", "x2", "y2"];
+              attributes2.forEach((attr2) => {
+                const value = element.getAttribute(attr2);
+                if (value && (value.includes("%") || value.includes("em") || value.includes("rem"))) {
+                  console.warn(`\u79FB\u9664\u76F8\u5BF9\u5355\u4F4D\u5C5E\u6027: ${attr2}=${value}`);
+                  element.removeAttribute(attr2);
+                }
+              });
+            } catch (error2) {
+            }
+          });
+        } catch (error2) {
+          console.error("\u4FEE\u590D SVG \u957F\u5EA6\u9519\u8BEF\u5931\u8D25:", error2);
+        }
+      },
+      // 设置可编辑功能
+      setupEditableFeatures(svg) {
+        svg.on("click", (event) => {
+          if (!this.editMode)
+            return;
+          const target = event.target;
+          const nodeElement = target.closest(".markmap-node");
+          if (nodeElement) {
+            const nodeData = nodeElement.__data__;
+            this.selectNode(nodeData);
+            if (event.detail === 2) {
+              this.startEditNode(nodeData, nodeElement);
+            }
+          }
+        });
+        svg.on("contextmenu", (event) => {
+          if (!this.editMode)
+            return;
+          event.preventDefault();
+          const target = event.target;
+          const nodeElement = target.closest(".markmap-node");
+          if (nodeElement) {
+            const nodeData = nodeElement.__data__;
+            this.showContextMenu(event, nodeData);
+          }
+        });
+      },
+      // 设置编辑模式
+      setEditMode(enabled) {
+        this.editMode = enabled;
+        const container = document.querySelector(".markmap-container");
+        if (container) {
+          if (enabled) {
+            container.classList.add("edit-mode");
+          } else {
+            container.classList.remove("edit-mode");
+            this.selectedNode = null;
+          }
+        }
+      },
+      // 选择节点
+      selectNode(node) {
+        const prevSelected = document.querySelector(".markmap-node.selected");
+        if (prevSelected) {
+          prevSelected.classList.remove("selected");
+        }
+        const nodeElements = document.querySelectorAll(".markmap-node");
+        nodeElements.forEach((el) => {
+          if (el.__data__ === node) {
+            el.classList.add("selected");
+          }
+        });
+        this.selectedNode = node;
+        this.safeCall("selectNode", node);
+      },
+      // 开始编辑节点
+      startEditNode(node, element) {
+        const textElement = element.querySelector("text");
+        if (!textElement)
+          return;
+        const rect = textElement.getBoundingClientRect();
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = this.getNodeText(node);
+        input.style.position = "fixed";
+        input.style.left = rect.left + "px";
+        input.style.top = rect.top + "px";
+        input.style.width = Math.max(100, rect.width) + "px";
+        input.style.height = rect.height + "px";
+        input.style.fontSize = window.getComputedStyle(textElement).fontSize;
+        input.style.fontFamily = window.getComputedStyle(textElement).fontFamily;
+        input.style.border = "2px solid #007aff";
+        input.style.borderRadius = "4px";
+        input.style.padding = "2px 4px";
+        input.style.zIndex = "9999";
+        input.style.background = "#fff";
+        document.body.appendChild(input);
+        input.focus();
+        input.select();
+        const finishEdit = () => {
+          const newText = input.value.trim();
+          if (newText && newText !== this.getNodeText(node)) {
+            this.updateNodeText(node, newText);
+          }
+          document.body.removeChild(input);
+        };
+        input.addEventListener("blur", finishEdit);
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            finishEdit();
+          } else if (e.key === "Escape") {
+            document.body.removeChild(input);
+          }
+        });
+      },
+      // 获取节点文本
+      getNodeText(node) {
+        return node.content || "";
+      },
+      // 更新节点文本
+      updateNodeText(node, newText) {
+        node.content = newText;
+        if (mm) {
+          mm.setData(this.currentData);
+        }
+        this.safeCall("editNodeText", node, newText);
+        this.safeEmit("data-change", this.dataToMarkdown(this.currentData));
+      },
+      // 添加节点
+      addNode(parentNode, text3) {
+        if (!parentNode) {
+          parentNode = this.currentData;
+        }
+        const newNode = {
+          content: text3 || "\u65B0\u8282\u70B9",
+          children: [],
+          payload: {
+            tag: "li"
+          }
+        };
+        if (!parentNode.children) {
+          parentNode.children = [];
+        }
+        parentNode.children.push(newNode);
+        if (mm) {
+          mm.setData(this.currentData);
+        }
+        this.safeEmit("data-change", this.dataToMarkdown(this.currentData));
+      },
+      // 删除节点
+      deleteNode(nodeToDelete) {
+        if (!nodeToDelete || nodeToDelete === this.currentData) {
+          return;
+        }
+        const deleteFromParent = (parent2) => {
+          if (parent2.children) {
+            const index2 = parent2.children.indexOf(nodeToDelete);
+            if (index2 > -1) {
+              parent2.children.splice(index2, 1);
+              return true;
+            }
+            for (let child of parent2.children) {
+              if (deleteFromParent(child)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        };
+        deleteFromParent(this.currentData);
+        if (mm) {
+          mm.setData(this.currentData);
+        }
+        this.safeEmit("data-change", this.dataToMarkdown(this.currentData));
+      },
+      // 将数据转换为 Markdown
+      dataToMarkdown(node, level = 1) {
+        let markdown = "";
+        const prefix = "#".repeat(level);
+        if (node.content) {
+          markdown += `${prefix} ${node.content}
+`;
+        }
+        if (node.children && node.children.length > 0) {
+          for (let child of node.children) {
+            if (child.payload && child.payload.tag === "li") {
+              markdown += `${"  ".repeat(level - 1)}- ${child.content}
+`;
+              if (child.children && child.children.length > 0) {
+                for (let subChild of child.children) {
+                  markdown += this.dataToMarkdown(subChild, level + 1);
+                }
+              }
+            } else {
+              markdown += this.dataToMarkdown(child, level + 1);
+            }
+          }
+        }
+        return markdown;
       },
       showError(message) {
         const container = document.querySelector(".markmap-container");
